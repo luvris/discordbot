@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, Collection } = require("discord.js");
 const fs = require("node:fs");
 const path = require("node:path");
+const { REST, Routes } = require("discord.js");
 require("dotenv").config();
 
 const client = new Client({
@@ -70,5 +71,20 @@ http
   .listen(process.env.PORT || 3000, () => {
     console.log("Health check server running");
   });
+
+// Register commands อัตโนมัติตอน start
+(async () => {
+  const commands = [];
+  for (const file of commandFiles) {
+    const command = require(path.join(commandsPath, file));
+    commands.push(command.data.toJSON());
+  }
+
+  const rest = new REST().setToken(process.env.TOKEN);
+  await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
+    body: commands,
+  });
+  console.log("✅ Commands registered!");
+})();
 
 client.login(process.env.TOKEN);
