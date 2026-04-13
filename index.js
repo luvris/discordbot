@@ -26,18 +26,29 @@ client.once('ready', () => {
   console.log(`✅ Online! Logged in as ${client.user.tag}`);
 });
 
-// รับ slash command
+// รับ interaction ทั้งหมด (รวมในอันเดียว)
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
   try {
-    await command.execute(interaction);
+    // Slash commands
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+      await command.execute(interaction);
+    }
+
+    // Select Menu และ Button
+    if (interaction.isStringSelectMenu() || interaction.isButton()) {
+      const noteCommand = client.commands.get('note');
+      if (noteCommand?.handleComponent) {
+        await noteCommand.handleComponent(interaction);
+      }
+    }
+
   } catch (error) {
     console.error(error);
-    await interaction.reply({ content: '❌ เกิดข้อผิดพลาด!', flags: 64 });
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ เกิดข้อผิดพลาด!', flags: 64 });
+    }
   }
 });
 
