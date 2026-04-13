@@ -5,6 +5,9 @@ const {
   StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require("discord.js");
 const crypto = require("node:crypto");
 const db = require("../firebase");
@@ -50,48 +53,37 @@ module.exports = {
         .setName("view")
         .setDescription("ดูโน้ตทั้งหมดในหมวดหมู่")
         .addStringOption((opt) =>
-          opt.setName("category").setDescription("ชื่อหมวดหมู่").setRequired(true)
-        )
+          opt
+            .setName("category")
+            .setDescription("ชื่อหมวดหมู่")
+            .setRequired(true),
+        ),
     )
     .addSubcommand((sub) =>
       sub
         .setName("add")
         .setDescription("เพิ่มโน้ตใหม่")
         .addStringOption((opt) =>
-          opt.setName("category").setDescription("ชื่อหมวดหมู่").setRequired(true)
+          opt
+            .setName("category")
+            .setDescription("ชื่อหมวดหมู่")
+            .setRequired(true),
         )
         .addStringOption((opt) =>
-          opt.setName("name").setDescription("ชื่อ").setRequired(true)
+          opt.setName("name").setDescription("ชื่อ").setRequired(true),
         )
         .addStringOption((opt) =>
-          opt.setName("id").setDescription("ไอดี").setRequired(false)
+          opt.setName("id").setDescription("ไอดี").setRequired(false),
         )
         .addStringOption((opt) =>
-          opt.setName("password").setDescription("รหัสผ่าน").setRequired(false)
-        )
+          opt.setName("password").setDescription("รหัสผ่าน").setRequired(false),
+        ),
     )
     .addSubcommand((sub) =>
-      sub
-        .setName("edit")
-        .setDescription("แก้ไขโน้ต")
-        .addStringOption((opt) =>
-          opt.setName("category").setDescription("ชื่อหมวดหมู่").setRequired(true)
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("number").setDescription("หมายเลขโน้ต").setRequired(true)
-        )
-        .addStringOption((opt) =>
-          opt.setName("name").setDescription("ชื่อใหม่").setRequired(false)
-        )
-        .addStringOption((opt) =>
-          opt.setName("id").setDescription("ไอดีใหม่").setRequired(false)
-        )
-        .addStringOption((opt) =>
-          opt.setName("password").setDescription("รหัสผ่านใหม่").setRequired(false)
-        )
+      sub.setName("edit").setDescription("แก้ไขโน้ต (เลือกจาก dropdown)"),
     )
     .addSubcommand((sub) =>
-      sub.setName("del").setDescription("ลบโน้ต (เลือกจาก dropdown)")
+      sub.setName("del").setDescription("ลบโน้ต (เลือกจาก dropdown)"),
     ),
 
   async execute(interaction) {
@@ -116,7 +108,8 @@ module.exports = {
       list.forEach((item, i) => {
         let value = "";
         if (item.id) value += `🪪 ID: \`${item.id}\`\n`;
-        if (item.password) value += `🔑 Password: \`${decrypt(item.password)}\``;
+        if (item.password)
+          value += `🔑 Password: \`${decrypt(item.password)}\``;
         if (!value) value = "_ไม่มีข้อมูลเพิ่มเติม_";
         embed.addFields({ name: `${i + 1}. ${item.name}`, value });
       });
@@ -147,28 +140,29 @@ module.exports = {
 
     // ────────────────────────────── EDIT ────────────────────────────
     if (sub === "edit") {
-      const category = interaction.options.getString("category")?.toLowerCase();
-      const idx = interaction.options.getInteger("number") - 1;
-      if (!notes[category]?.[idx]) {
+      const keys = Object.keys(notes);
+      if (keys.length === 0) {
         return interaction.reply({
-          content: `❌ ไม่พบโน้ตหมายเลข **${idx + 1}**`,
+          content: "📭 ยังไม่มีโน้ตเลยครับ!",
           flags: 64,
         });
       }
-      const item = notes[category][idx];
-      const newName = interaction.options.getString("name");
-      const newId = interaction.options.getString("id");
-      const newPassword = interaction.options.getString("password");
-      if (newName) item.name = newName;
-      if (newId) item.id = newId;
-      if (newPassword) item.password = encrypt(newPassword);
-      await saveUserNotes(userId, notes);
+
+      // ขั้นที่ 1: dropdown เลือก category
+      const categoryMenu = new StringSelectMenuBuilder()
+        .setCustomId("edit_category")
+        .setPlaceholder("🗂️ เลือก category...")
+        .addOptions(
+          keys.map((key) => ({
+            label: key,
+            description: `${notes[key].length} รายการ`,
+            value: key,
+          })),
+        );
+
       return interaction.reply({
-        content:
-          `✏️ แก้ไขโน้ตหมายเลข **${idx + 1}** แล้ว!\n` +
-          `📌 **${item.name}**` +
-          (item.id ? `\n🪪 ID: \`${item.id}\`` : "") +
-          (newPassword ? `\n🔑 Password: \`${newPassword}\`` : ""),
+        content: "🗂️ เลือก **category** ที่อยากแก้ไขโน้ต:",
+        components: [new ActionRowBuilder().addComponents(categoryMenu)],
         flags: 64,
       });
     }
@@ -176,8 +170,6 @@ module.exports = {
     // ────────────────────────────── DEL ─────────────────────────────
     if (sub === "del") {
       const keys = Object.keys(notes);
-
-      // ไม่มี category เลย
       if (keys.length === 0) {
         return interaction.reply({
           content: "📭 ยังไม่มีโน้ตเลยครับ!",
@@ -194,7 +186,7 @@ module.exports = {
             label: key,
             description: `${notes[key].length} รายการ`,
             value: key,
-          }))
+          })),
         );
 
       return interaction.reply({
@@ -205,12 +197,84 @@ module.exports = {
     }
   },
 
-  // ─────────────── HANDLE SELECT MENU & BUTTON ───────────────────
+  // ─────────────── HANDLE SELECT MENU, BUTTON & MODAL ────────────
   async handleComponent(interaction) {
     const userId = interaction.user.id;
     const notes = await loadUserNotes(userId);
 
-    // ขั้นที่ 2: เลือก category แล้ว → dropdown รายการ
+    // ════════════════════════ EDIT FLOW ════════════════════════════
+
+    // edit ขั้นที่ 2: เลือก category → dropdown รายการ
+    if (interaction.customId === "edit_category") {
+      const category = interaction.values[0];
+      const list = notes[category];
+
+      if (!list || list.length === 0) {
+        return interaction.update({
+          content: `📭 ไม่มีโน้ตในหมวด **${category}** ครับ`,
+          components: [],
+        });
+      }
+
+      const itemMenu = new StringSelectMenuBuilder()
+        .setCustomId(`edit_item:${category}`)
+        .setPlaceholder("📋 เลือกโน้ตที่อยากแก้ไข...")
+        .addOptions(
+          list.map((item, i) => ({
+            label: item.name,
+            description: item.id ? `ID: ${item.id}` : "ไม่มี ID",
+            value: String(i),
+          })),
+        );
+
+      return interaction.update({
+        content: `📋 เลือก **โน้ต** ที่อยากแก้ไขจาก **${category}**:`,
+        components: [new ActionRowBuilder().addComponents(itemMenu)],
+      });
+    }
+
+    // edit ขั้นที่ 3: เลือกโน้ตแล้ว → เปิด Modal กรอกค่าใหม่
+    if (interaction.customId.startsWith("edit_item:")) {
+      const category = interaction.customId.split(":")[1];
+      const idx = parseInt(interaction.values[0]);
+      const item = notes[category][idx];
+
+      const modal = new ModalBuilder()
+        .setCustomId(`edit_modal:${category}:${idx}`)
+        .setTitle(`✏️ แก้ไข: ${item.name}`);
+
+      const nameInput = new TextInputBuilder()
+        .setCustomId("edit_name")
+        .setLabel("ชื่อใหม่ (เว้นว่างถ้าไม่เปลี่ยน)")
+        .setStyle(TextInputStyle.Short)
+        .setValue(item.name)
+        .setRequired(false);
+
+      const idInput = new TextInputBuilder()
+        .setCustomId("edit_id")
+        .setLabel("ID ใหม่ (เว้นว่างถ้าไม่เปลี่ยน)")
+        .setStyle(TextInputStyle.Short)
+        .setValue(item.id || "")
+        .setRequired(false);
+
+      const passwordInput = new TextInputBuilder()
+        .setCustomId("edit_password")
+        .setLabel("Password ใหม่ (เว้นว่างถ้าไม่เปลี่ยน)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(nameInput),
+        new ActionRowBuilder().addComponents(idInput),
+        new ActionRowBuilder().addComponents(passwordInput),
+      );
+
+      return interaction.showModal(modal);
+    }
+
+    // ════════════════════════ DEL FLOW ═════════════════════════════
+
+    // del ขั้นที่ 2: เลือก category → dropdown รายการ
     if (interaction.customId === "del_category") {
       const category = interaction.values[0];
       const list = notes[category];
@@ -230,7 +294,7 @@ module.exports = {
             label: item.name,
             description: item.id ? `ID: ${item.id}` : "ไม่มี ID",
             value: String(i),
-          }))
+          })),
         );
 
       return interaction.update({
@@ -239,7 +303,7 @@ module.exports = {
       });
     }
 
-    // ขั้นที่ 3: เลือกโน้ตแล้ว → ปุ่มยืนยัน/ยกเลิก
+    // del ขั้นที่ 3: เลือกโน้ตแล้ว → ปุ่มยืนยัน/ยกเลิก
     if (interaction.customId.startsWith("del_item:")) {
       const category = interaction.customId.split(":")[1];
       const idx = parseInt(interaction.values[0]);
@@ -266,7 +330,7 @@ module.exports = {
       });
     }
 
-    // ขั้นที่ 4: กดยืนยัน → ลบจริง
+    // del ขั้นที่ 4: กดยืนยัน → ลบจริง
     if (interaction.customId.startsWith("del_confirm:")) {
       const [, category, idxStr] = interaction.customId.split(":");
       const idx = parseInt(idxStr);
@@ -289,11 +353,44 @@ module.exports = {
       return interaction.update({ content: msg, components: [] });
     }
 
-    // ยกเลิก
+    // ยกเลิก del
     if (interaction.customId === "del_cancel") {
       return interaction.update({
         content: "✅ ยกเลิกแล้วครับ ไม่มีอะไรถูกลบ",
         components: [],
+      });
+    }
+  },
+
+  // ─────────────── HANDLE MODAL SUBMIT ───────────────────────────
+  async handleModal(interaction) {
+    const userId = interaction.user.id;
+    const notes = await loadUserNotes(userId);
+
+    // edit modal submit
+    if (interaction.customId.startsWith("edit_modal:")) {
+      const [, category, idxStr] = interaction.customId.split(":");
+      const idx = parseInt(idxStr);
+      const item = notes[category][idx];
+
+      const newName = interaction.fields.getTextInputValue("edit_name").trim();
+      const newId = interaction.fields.getTextInputValue("edit_id").trim();
+      const newPassword = interaction.fields
+        .getTextInputValue("edit_password")
+        .trim();
+
+      if (newName) item.name = newName;
+      if (newId) item.id = newId;
+      if (newPassword) item.password = encrypt(newPassword);
+
+      await saveUserNotes(userId, notes);
+
+      return interaction.reply({
+        content:
+          `✏️ แก้ไข **${item.name}** ในหมวด **${category}** แล้วครับ!\n` +
+          (item.id ? `🪪 ID: \`${item.id}\`\n` : "") +
+          (newPassword ? `🔑 Password: \`${newPassword}\`` : ""),
+        flags: 64,
       });
     }
   },
